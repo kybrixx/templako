@@ -5,7 +5,6 @@ gunicorn==21.2.0
 
 # Database
 supabase==2.0.2
-storage3==0.7.0
 
 # Security
 bcrypt==4.0.1
