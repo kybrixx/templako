@@ -7,7 +7,7 @@ services:
       pip install --upgrade pip
       pip install -r requirements.txt
       pip install gunicorn
-    startCommand: gunicorn server:app --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120 --worker-class sync
+    startCommand: gunicorn server:app --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120
     envVars:
       - key: SECRET_KEY
         generateValue: true
@@ -39,9 +39,3 @@ services:
         value: "3.11.0"
       - key: RENDER
         value: "true"
-
-  - type: cron
-    name: lako-health-check
-    schedule: "*/5 * * * *"
-    rootDir: backend
-    startCommand: curl -I https://lako.onrender.com/health || exit 0
