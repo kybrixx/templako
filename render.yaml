@@ -1,17 +1,28 @@
 services:
   - type: web
-    name: lako-backend
-    runtime: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: python backend/server.py
+    name: lako
+    env: python
+    rootDir: backend
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
+    startCommand: gunicorn server:app --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.0
-      - key: SMTP_USERNAME
-        sync: false
-      - key: SMTP_PASSWORD
-        sync: false
+      - key: SECRET_KEY
+        generateValue: true
       - key: SUPABASE_URL
-        value: https://emsmhgfzmgnpadpremkq.supabase.co
+        sync: false
       - key: SUPABASE_KEY
         sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: BASE_URL
+        sync: false
+      - key: APP_NAME
+        value: Lako
+      - key: DEBUG
+        value: "False"
+      - key: PYTHON_VERSION
+        value: "3.11.0"
+      - key: RENDER
+        value: "true"
