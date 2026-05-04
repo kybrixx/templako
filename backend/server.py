@@ -8011,13 +8011,6 @@ def update_location_route():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     
-# ============================================
-# ADMIN ADDITIONAL ENDPOINTS
-# ============================================
-# ============================================
-# VENDOR MANAGEMENT (Full CRUD)
-# ============================================
-
 @app.route('/api/admin/vendors', methods=['GET'])
 def admin_api_get_vendors():
     session = require_session(request.headers.get('X-Session-Token'))
@@ -8053,7 +8046,6 @@ def admin_api_create_vendor():
         'longitude': data.get('longitude'),
         'phone': data.get('phone'),
         'email': data.get('email'),
-        'description': data.get('description'),
         'is_open': data.get('is_open', False),
         'operating_hours': data.get('operating_hours', {})
     }).execute()
@@ -8069,7 +8061,7 @@ def admin_api_update_vendor(vendor_id):
     data = request.json
     update_data = {}
     fields = ['business_name', 'category', 'address', 'latitude', 'longitude', 
-              'phone', 'email', 'description', 'is_open', 'operating_hours']
+              'phone', 'email', 'is_open', 'operating_hours']
     
     for field in fields:
         if field in data:
@@ -8086,14 +8078,11 @@ def admin_api_delete_vendor(vendor_id):
     if not session or session['role'] != 'admin':
         return jsonify({'error': 'Unauthorized'}), 401
     
-    # Get user_id associated with this vendor
     vendor = supabase.table('vendors').select('user_id').eq('id', vendor_id).execute()
     user_id = vendor.data[0].get('user_id') if vendor.data else None
     
-    # Delete related data
     supabase.table('products').delete().eq('vendor_id', vendor_id).execute()
     supabase.table('reviews').delete().eq('vendor_id', vendor_id).execute()
-    supabase.table('vendor_hours').delete().eq('vendor_id', vendor_id).execute()
     supabase.table('shortlists').delete().eq('vendor_id', vendor_id).execute()
     
     if user_id:
@@ -8103,18 +8092,28 @@ def admin_api_delete_vendor(vendor_id):
     
     return jsonify({'success': True})
 
-# ============================================
-# VENDOR HOURS MANAGEMENT
-# ============================================
-
 @app.route('/api/admin/vendors/<vendor_id>/hours', methods=['GET'])
 def admin_api_get_vendor_hours(vendor_id):
     session = require_session(request.headers.get('X-Session-Token'))
     if not session or session['role'] != 'admin':
         return jsonify({'error': 'Unauthorized'}), 401
     
-    result = supabase.table('vendor_hours').select('*').eq('vendor_id', vendor_id).execute()
-    return jsonify({'hours': result.data})
+    result = supabase.table('vendors').select('operating_hours').eq('id', vendor_id).execute()
+    if not result.data:
+        return jsonify({'hours': []})
+    
+    operating_hours = result.data[0].get('operating_hours', {})
+    
+    hours_array = []
+    days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+    for day in days:
+        if day in operating_hours:
+            hours_array.append({
+                'day': day,
+                'hours': operating_hours[day]
+            })
+    
+    return jsonify({'hours': hours_array})
 
 @app.route('/api/admin/vendors/<vendor_id>/hours', methods=['PUT'])
 def admin_api_update_vendor_hours(vendor_id):
@@ -8124,14 +8123,14 @@ def admin_api_update_vendor_hours(vendor_id):
     
     hours = request.json.get('hours', [])
     
-    supabase.table('vendor_hours').delete().eq('vendor_id', vendor_id).execute()
-    
+    hours_obj = {}
     for h in hours:
-        supabase.table('vendor_hours').insert({
-            'vendor_id': vendor_id,
-            'day': h.get('day'),
-            'hours': h.get('hours')
-        }).execute()
+        day = h.get('day', '').lower()
+        hours_val = h.get('hours', 'closed')
+        if day:
+            hours_obj[day] = hours_val
+    
+    supabase.table('vendors').update({'operating_hours': hours_obj}).eq('id', vendor_id).execute()
     
     return jsonify({'success': True})
 
@@ -8250,7 +8249,10 @@ def admin_api_delete_user():
     supabase.table('comments').delete().eq('user_id', user_id).execute()
     supabase.table('post_likes').delete().eq('user_id', user_id).execute()
     supabase.table('shortlists').delete().eq('user_id', user_id).execute()
-    supabase.table('reviews').delete().eq('user_id', user_id).execute()
+    
+    # FIXED: Use 'customer_id' instead of 'user_id'
+    supabase.table('reviews').delete().eq('customer_id', user_id).execute()
+    
     supabase.table('user_sessions').delete().eq('user_id', user_id).execute()
     
     # If user is a vendor, delete vendor record
