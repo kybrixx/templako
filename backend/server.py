@@ -247,7 +247,7 @@ class NotificationService:
                 <div class="footer">
                     <p>{APP_NAME} - GPS Based Vendor Discovery App</p>
                     <p>📍 Tiaong, Quezon | 🍢 Made with love for local food lovers</p>
-                    <p>© 2024 {APP_NAME}. All rights reserved.</p>
+                    <p>© 2026 {APP_NAME}. All rights reserved.</p>
                 </div>
             </div>
         </body>
@@ -397,7 +397,7 @@ Never share this code with anyone, even if they claim to be from {APP_NAME}.
                     <div class="social">
                         <a href="#">📱 Download App</a> | <a href="#">💬 Support</a> | <a href="#">📧 Contact</a>
                     </div>
-                    <p style="margin-top: 15px;">© 2024 {APP_NAME}. All rights reserved.</p>
+                    <p style="margin-top: 15px;">© 2026 {APP_NAME}. All rights reserved.</p>
                 </div>
             </div>
         </body>
@@ -671,6 +671,17 @@ def create_session(user_id, role):
 def get_session(session_token):
     if not session_token:
         return None
+    
+    # FIRST: Check local sessions dictionary (from login endpoint)
+    global sessions
+    if session_token in sessions:
+        session_data = sessions[session_token]
+        return {
+            'user_id': session_data['user_id'],
+            'role': session_data['role']
+        }
+    
+    # SECOND: Check database sessions (fallback)
     try:
         result = supabase.table('user_sessions').select('*').eq('session_token', session_token).execute()
         if result.data:
@@ -682,7 +693,8 @@ def get_session(session_token):
             supabase.table('user_sessions').update({'last_activity': utc_now()}).eq('session_token', session_token).execute()
             return session
         return None
-    except:
+    except Exception as e:
+        print(f"Database session error: {e}")
         return None
 
 def delete_session(session_token):
@@ -6766,11 +6778,12 @@ def update_profile():
         if not session_token:
             return jsonify({'success': False, 'error': 'No session token'}), 401
         
-        # Validate session
-        session = get_session(session_token)
-        if not session:
+        # Check local sessions dictionary (NOT database)
+        global sessions
+        if session_token not in sessions:
             return jsonify({'success': False, 'error': 'Invalid or expired session'}), 401
         
+        session = sessions[session_token]
         user_id = session['user_id']
         data = request.json
         
@@ -6796,45 +6809,54 @@ def update_profile():
             if email_check.data and len(email_check.data) > 0 and email_check.data[0]['id'] != user_id:
                 return jsonify({'success': False, 'error': 'Email already taken'}), 400
             update_data['email'] = data['email']
-            update_data['is_email_verified'] = False  # Reset verification when email changes
+            update_data['email_verified'] = False
         
         # Update phone (only if changed)
         if 'phone' in data and data['phone'] and data['phone'] != current_user.get('phone'):
             update_data['phone'] = data['phone']
-            update_data['is_phone_verified'] = False  # Reset verification when phone changes
+            update_data['phone_verified'] = False
         
         # Update password (only if provided)
         if 'password' in data and data['password']:
             import bcrypt
             hashed = bcrypt.hashpw(data['password'].encode('utf-8'), bcrypt.gensalt())
-            update_data['password_hash'] = hashed.decode('utf-8')
+            update_data['password'] = hashed.decode('utf-8')
         
-        # Update photo (base64 string)
+        # Update photo
         if 'photo' in data and data['photo']:
-            # Limit photo size (max 2MB base64)
             if len(data['photo']) > 2 * 1024 * 1024:
                 return jsonify({'success': False, 'error': 'Photo too large (max 2MB)'}), 400
-            update_data['photo'] = data['photo']
+            update_data['profile_photo'] = data['photo']
         
         # Only update if there are changes
         if update_data:
             supabase.table('users').update(update_data).eq('id', user_id).execute()
         
         # Get updated user data
-        updated_user = supabase.table('users').select('id', 'full_name', 'email', 'phone', 'photo', 'is_email_verified', 'is_phone_verified').eq('id', user_id).execute()
+        updated_user = supabase.table('users').select('id', 'full_name', 'email', 'phone', 'profile_photo', 'email_verified', 'phone_verified').eq('id', user_id).execute()
         
         if updated_user.data and len(updated_user.data) > 0:
             user_data = updated_user.data[0]
             return jsonify({
                 'success': True,
                 'message': 'Profile updated successfully',
-                'user': user_data
+                'user': {
+                    'id': user_data.get('id'),
+                    'full_name': user_data.get('full_name'),
+                    'email': user_data.get('email'),
+                    'phone': user_data.get('phone'),
+                    'profile_photo': user_data.get('profile_photo'),
+                    'email_verified': user_data.get('email_verified'),
+                    'phone_verified': user_data.get('phone_verified')
+                }
             })
         else:
             return jsonify({'success': False, 'error': 'Failed to retrieve updated profile'}), 500
         
     except Exception as e:
         print(f"Update profile error: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/customer/update-profile-photo', methods=['POST'])
